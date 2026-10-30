@@ -1,0 +1,30 @@
+# Downloaded model files
+models/
+*.onnx
+*.pt
+*.pth
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Runtime output
+*.log
+*.tmp
+*.temp
+test*.png
+test*.jpg
+uploads/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/

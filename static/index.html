@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>나와 닮은 동물상 테스트</title><link rel="stylesheet" href="/static/style.css"></head>
+<body><main class="card">
+  <p class="eyebrow">ANIMAL FACE LAB</p><h1>나와 닮은<br><span>동물상</span> 테스트</h1>
+  <p class="intro">사진을 올리면 강아지·고양이·토끼·여우 중<br>어떤 분위기에 가까운지 가볍게 알아봐요.</p>
+  <section id="dropzone" class="dropzone"><input id="file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+    <div id="placeholder"><div class="upload-icon">↑</div><strong>사진을 선택해 주세요</strong><small>JPG, PNG, WEBP · 최대 10MB</small><button id="select" type="button">파일 선택</button></div>
+    <img id="preview" alt="선택한 이미지 미리보기" hidden>
+  </section>
+  <p id="error" class="error" role="alert" hidden></p>
+  <button id="analyze" class="primary" disabled>동물상 분석하기 <span>→</span></button>
+  <section id="result" class="result" hidden><p class="eyebrow">YOUR RESULT</p><h2>당신은 <span id="winner"></span></h2><div id="bars"></div><p class="disclaimer">ⓘ 이 결과는 MobileNet 이미지 분류 모델을 활용한 <b>재미용 단순 추정치</b>이며, 실제 성격이나 외모를 판단하지 않아요.</p><button id="again" class="secondary">다른 사진으로 다시 하기</button></section>
+  <p id="status" class="status">CPU에서 실행되는 가벼운 모델 · 모델 상태 확인 중</p>
+</main><script src="/static/app.js"></script></body></html>
