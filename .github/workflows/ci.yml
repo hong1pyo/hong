@@ -56,16 +56,48 @@ jobs:
           IMAGE: ${{ needs.build-and-push.outputs.image }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $containerName = $env:CONTAINER_NAME
+          $port = [int]$env:APP_PORT
+
+          Write-Host "Pulling image: $env:IMAGE"
           docker pull $env:IMAGE
-          docker rm -f $env:CONTAINER_NAME 2>$null
-          docker run -d --name $env:CONTAINER_NAME --restart unless-stopped -p "${env:APP_PORT}:8765" $env:IMAGE
+          if ($LASTEXITCODE -ne 0) { throw "docker pull failed for $env:IMAGE" }
+
+          # Remove only the previous deployment. A missing container is expected.
+          docker rm -f $containerName 2>$null | Out-Null
+          $runOutput = docker run -d --name $containerName --restart unless-stopped -p "127.0.0.1:${port}:8765" $env:IMAGE 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "docker run output: $runOutput"
+            docker ps -a
+            throw 'docker run failed; the new container was not created.'
+          }
+          $containerId = ($runOutput | Select-Object -Last 1).ToString().Trim()
+          Write-Host "Started container: $containerId"
+
           $healthy = $false
           for ($i = 1; $i -le 30; $i++) {
             Start-Sleep -Seconds 2
+            $state = docker inspect --format '{{.State.Status}}' $containerName 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Health check $i/30: container does not exist."
+              continue
+            }
+            Write-Host "Health check $i/30: container state=$state"
             try {
-              $response = Invoke-RestMethod -Uri "http://127.0.0.1:$env:APP_PORT/api/status" -TimeoutSec 5
+              $response = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/status" -TimeoutSec 5
               if ($response.model_ready -eq $true) { $healthy = $true; break }
             } catch { Write-Host "Health check $i/30 failed: $($_.Exception.Message)" }
           }
-          if (-not $healthy) { docker logs $env:CONTAINER_NAME; throw 'Container health check failed.' }
+          if (-not $healthy) {
+            Write-Host 'Final container list:'
+            docker ps -a
+            $exists = docker container inspect $containerName 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host 'Container logs:'
+              docker logs $containerName
+            } else {
+              Write-Host "Container '$containerName' does not exist after docker run."
+            }
+            throw 'Container health check failed.'
+          }
           Write-Host "Deployed $env:IMAGE successfully."
