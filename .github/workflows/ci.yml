@@ -51,7 +51,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Pull and replace local container
-        shell: pwsh
+        shell: powershell
         env:
           IMAGE: ${{ needs.build-and-push.outputs.image }}
         run: |
