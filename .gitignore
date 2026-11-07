@@ -28,3 +28,8 @@ uploads/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# GitHub Actions self-hosted runner installation and work files
+actions-runner/
+.runner/
+_work/
