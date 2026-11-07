@@ -1,0 +1,11 @@
+.git
+.github
+__pycache__
+*.py[cod]
+models
+upload
+*.onnx
+*.log
+*.docx
+*.zip
+.vscode
