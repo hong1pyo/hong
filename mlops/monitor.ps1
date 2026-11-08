@@ -12,7 +12,12 @@ while ((Get-Date).ToUniversalTime() -lt $end) {
   $http = & curl.exe -sS -o $responseFile -w '%{http_code}' -X POST -F "file=@$tmp;type=image/jpeg" $api
   $finish = (Get-Date).ToUniversalTime()
   $ok = $false; $version = 'unknown'; $status = [int]$http
-  try { $body = Get-Content $responseFile -Raw | ConvertFrom-Json; $ok = ($status -eq 200 -and $body.winner); $version = (Invoke-RestMethod $statusUrl).version } catch {}
+  try {
+    $body = Get-Content $responseFile -Raw | ConvertFrom-Json
+    $hasWinner = $null -ne ($body.PSObject.Properties['winner'])
+    $ok = ($status -eq 200 -and $hasWinner)
+  } catch {}
+  try { $versionResponse = Invoke-RestMethod -Uri $statusUrl -TimeoutSec 5; $version = [string]$versionResponse.version } catch {}
   $record = [ordered]@{ start=$start.ToString('o'); end=$finish.ToString('o'); latency_ms=[math]::Round(($finish-$start).TotalMilliseconds,1); status=$status; analysis_ok=[bool]$ok; version=$version }
   ($record | ConvertTo-Json -Compress) | Add-Content -LiteralPath $LogPath -Encoding utf8
   Start-Sleep -Seconds 1
