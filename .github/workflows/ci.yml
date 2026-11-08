@@ -80,7 +80,12 @@ jobs:
           $logDir = Join-Path $env:GITHUB_WORKSPACE 'deployment-logs'
           New-Item -ItemType Directory -Force $logDir | Out-Null
           $monitorLog = Join-Path $logDir 'monitor.jsonl'
-          $monitor = Start-Process powershell.exe -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$env:GITHUB_WORKSPACE\mlops\monitor.ps1",'-DurationSeconds','90','-LogPath',$monitorLog)
+          $fixedImage = Join-Path $logDir 'fixed-test.jpg'
+          $metaUrl = 'https://datasets-server.huggingface.co/first-rows?dataset=Pratheesh99%2Fanimal-faces-raw&config=default&split=val&offset=0&length=1'
+          $meta = (Invoke-WebRequest $metaUrl -UseBasicParsing).Content | ConvertFrom-Json
+          Invoke-WebRequest $meta.rows[0].row.image.src -OutFile $fixedImage -UseBasicParsing
+          if (-not (Test-Path $fixedImage)) { throw 'Fixed monitoring image could not be prepared.' }
+          $monitor = Start-Process powershell.exe -PassThru -WindowStyle Hidden -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$env:GITHUB_WORKSPACE\mlops\monitor.ps1",'-DurationSeconds','90','-LogPath',$monitorLog,'-TestImagePath',$fixedImage)
           $monitor.Id | Out-File (Join-Path $logDir 'monitor.pid') -Encoding ascii
           Start-Sleep -Seconds 5
           if ($monitor.HasExited) { throw 'Independent monitor exited before deployment.' }
@@ -136,7 +141,7 @@ jobs:
         run: |
           $log = Join-Path $env:GITHUB_WORKSPACE 'deployment-logs/monitor.jsonl'
           $pidFile = Join-Path $env:GITHUB_WORKSPACE 'deployment-logs/monitor.pid'
-          if (Test-Path $pidFile) { $pid = Get-Content $pidFile; Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue }
+          if (Test-Path $pidFile) { $monitorPid = Get-Content $pidFile; Stop-Process -Id $monitorPid -Force -ErrorAction SilentlyContinue }
           if (Test-Path $log) {
             $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
             $success = @($rows | Where-Object analysis_ok).Count

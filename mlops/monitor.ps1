@@ -1,10 +1,9 @@
-param([int]$DurationSeconds = 90, [string]$LogPath = 'monitor.jsonl')
+param([int]$DurationSeconds = 90, [string]$LogPath = 'monitor.jsonl', [string]$TestImagePath = '')
 $ErrorActionPreference = 'Continue'
 $api = 'http://127.0.0.1:8765/api/analyze'
 $statusUrl = 'http://127.0.0.1:8765/api/status'
-$tmp = Join-Path $env:TEMP 'animal-face-fixed-test.jpg'
-$meta = (Invoke-WebRequest 'https://datasets-server.huggingface.co/first-rows?dataset=Pratheesh99%2Fanimal-faces-raw&config=default&split=val&offset=0&length=1' -UseBasicParsing).Content | ConvertFrom-Json
-Invoke-WebRequest $meta.rows[0].row.image.src -OutFile $tmp -UseBasicParsing
+$tmp = if ($TestImagePath) { $TestImagePath } else { Join-Path $env:TEMP 'animal-face-fixed-test.jpg' }
+if (-not (Test-Path $tmp)) { throw "Fixed test image does not exist: $tmp" }
 if (Test-Path $LogPath) { Remove-Item $LogPath -Force }
 $end = (Get-Date).ToUniversalTime().AddSeconds($DurationSeconds)
 while ((Get-Date).ToUniversalTime() -lt $end) {
@@ -18,4 +17,5 @@ while ((Get-Date).ToUniversalTime() -lt $end) {
   ($record | ConvertTo-Json -Compress) | Add-Content -LiteralPath $LogPath -Encoding utf8
   Start-Sleep -Seconds 1
 }
-Remove-Item $tmp,$responseFile -Force -ErrorAction SilentlyContinue
+if (-not $TestImagePath) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+Remove-Item $responseFile -Force -ErrorAction SilentlyContinue
