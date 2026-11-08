@@ -14,7 +14,28 @@ env:
   APP_PORT: '8765'
 
 jobs:
+  evaluate-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install evaluation dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Prepare pinned model without committing it
+        run: |
+          mkdir -p models
+          curl -fsSL 'https://github.com/onnx/models/raw/main/validated/vision/classification/mobilenet/model/mobilenetv2-7.onnx' -o models/mobilenetv2-7.onnx
+          echo 'C1C513582D56AFCEFF8516C73804E484C81C6A830712AB6D682253F4A3CD042F  models/mobilenetv2-7.onnx' | sha256sum -c -
+      - name: Evaluate fixed 30/70 public split
+        run: python mlops/evaluate.py | tee evaluation.json
+      - name: Upload evaluation result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-evaluation
+          path: evaluation.json
+
   build-and-push:
+    needs: evaluate-model
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +76,14 @@ jobs:
           }
           $containerName = $env:CONTAINER_NAME
           $port = [int]$env:APP_PORT
+
+          $logDir = Join-Path $env:GITHUB_WORKSPACE 'deployment-logs'
+          New-Item -ItemType Directory -Force $logDir | Out-Null
+          $monitorLog = Join-Path $logDir 'monitor.jsonl'
+          $monitor = Start-Process powershell.exe -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$env:GITHUB_WORKSPACE\mlops\monitor.ps1",'-DurationSeconds','90','-LogPath',$monitorLog)
+          $monitor.Id | Out-File (Join-Path $logDir 'monitor.pid') -Encoding ascii
+          Start-Sleep -Seconds 5
+          if ($monitor.HasExited) { throw 'Independent monitor exited before deployment.' }
 
           Write-Host "Pulling image: $env:IMAGE"
           docker pull $env:IMAGE
@@ -98,3 +127,32 @@ jobs:
             throw 'Container health check failed.'
           }
           Write-Host "Deployed $env:IMAGE successfully."
+          Start-Sleep -Seconds 30
+          if (Get-Process -Id $monitor.Id -ErrorAction SilentlyContinue) { Stop-Process -Id $monitor.Id -Force }
+
+      - name: Publish monitoring logs and summary
+        if: always()
+        shell: powershell
+        run: |
+          $log = Join-Path $env:GITHUB_WORKSPACE 'deployment-logs/monitor.jsonl'
+          $pidFile = Join-Path $env:GITHUB_WORKSPACE 'deployment-logs/monitor.pid'
+          if (Test-Path $pidFile) { $pid = Get-Content $pidFile; Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue }
+          if (Test-Path $log) {
+            $rows = @(Get-Content $log | ForEach-Object { $_ | ConvertFrom-Json })
+            $success = @($rows | Where-Object analysis_ok).Count
+            $failure = $rows.Count - $success
+            $gaps = @()
+            for ($i = 1; $i -lt $rows.Count; $i++) { $gaps += (([datetime]$rows[$i].start - [datetime]$rows[$i-1].start).TotalSeconds) }
+            $maxGap = if ($gaps.Count) { ($gaps | Measure-Object -Maximum).Maximum } else { 0 }
+            $representative = @($rows[0], $rows[[math]::Floor($rows.Count / 2)], $rows[$rows.Count - 1]) | ForEach-Object { "| $($_.start) | $($_.version) | $($_.status) | $($_.latency_ms) ms | $($_.analysis_ok) |" }
+            $summary = @("# Zero-Downtime Deployment Verification", "", "| Item | Value |", "|---|---|", "| Address | http://127.0.0.1:8765 |", "| Observed UTC | $($rows[0].start) to $($rows[-1].end) |", "| Requests | $($rows.Count) |", "| Success / Failure | $success / $failure |", "| Target interval | 1 second |", "| Maximum recorded gap | $([math]::Round([double]$maxGap,2)) seconds |", "| Dataset | Pratheesh99/animal-faces-raw val, 100 rows (30 tune / 70 final) |", "| Zero-downtime statement | No failed API response was observed in this monitor range; unobserved gaps remain unverified. |", "", "## Representative responses", "", "| Time (UTC) | Version | HTTP | Latency | Analysis OK |", "|---|---|---:|---:|---|") + $representative
+            $summary | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8
+            Get-Content $log
+          }
+          else { '# Monitoring log unavailable' | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 }
+      - name: Upload monitoring logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-monitoring
+          path: deployment-logs

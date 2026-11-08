@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from io import BytesIO
 from typing import Annotated
 import json
@@ -15,7 +16,8 @@ except ImportError:
     ort = None
 
 ROOT = Path(__file__).parent
-MODEL_PATH = ROOT / "models" / "mobilenetv2-7.onnx"
+MODEL_PATH = Path(os.getenv("MODEL_PATH", str(ROOT / "models" / "mobilenetv2-7.onnx")))
+MODEL_VERSION = os.getenv("MODEL_VERSION", "mobilenetv2-baseline")
 MAX_BYTES = 10 * 1024 * 1024
 ALLOWED = {"image/jpeg", "image/png", "image/webp"}
 
@@ -35,6 +37,10 @@ GROUPS = {
 }
 
 def preprocess(image: Image.Image) -> np.ndarray:
+    if os.getenv("PREPROCESS_VARIANT", "resize") == "center-crop":
+        side = min(image.size)
+        left, top = (image.width - side) // 2, (image.height - side) // 2
+        image = image.crop((left, top, left + side, top + side))
     image = image.convert("RGB").resize((224, 224), Image.Resampling.BILINEAR)
     data = np.asarray(image, dtype=np.float32) / 255.0
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -66,7 +72,7 @@ def index():
 
 @app.get("/api/status")
 def status():
-    return {"model_ready": session is not None, "model": "MobileNetV2 (ONNX, CPU)"}
+    return {"model_ready": session is not None, "model": "MobileNetV2 (ONNX, CPU)", "version": MODEL_VERSION}
 
 @app.post("/api/analyze")
 async def api_analyze(file: Annotated[UploadFile, File(...)]):

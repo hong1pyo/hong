@@ -33,3 +33,6 @@ Thumbs.db
 actions-runner/
 .runner/
 _work/
+deployment-logs/
+evaluation.json
+*.jsonl

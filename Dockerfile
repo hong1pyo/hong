@@ -5,6 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
+ARG MODEL_VERSION=mobilev2-preprocess-v2
+ENV MODEL_VERSION=${MODEL_VERSION} PREPROCESS_VARIANT=center-crop
 
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
