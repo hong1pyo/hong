@@ -11,11 +11,13 @@ while ((Get-Date).ToUniversalTime() -lt $end) {
   $responseFile = Join-Path $env:TEMP 'animal-face-response.json'
   $http = & curl.exe -sS -o $responseFile -w '%{http_code}' -X POST -F "file=@$tmp;type=image/jpeg" $api
   $finish = (Get-Date).ToUniversalTime()
-  $ok = $false; $version = 'unknown'; $status = [int]$http
+  $ok = $false; $version = 'unknown'; $status = [int]($http.ToString().Trim())
   try {
-    $body = Get-Content $responseFile -Raw | ConvertFrom-Json
-    $hasWinner = $null -ne ($body.PSObject.Properties['winner'])
-    $ok = ($status -eq 200 -and $hasWinner)
+    $raw = Get-Content $responseFile -Raw
+    # The API contract is: HTTP 200 plus non-empty winner and results object.
+    # Match raw JSON only; this is compatible with Windows PowerShell 5.1 even
+    # when the response contains non-ASCII Korean result labels.
+    $ok = ($status -eq 200 -and $raw -match '"winner"\s*:\s*"[^"]+"' -and $raw -match '"results"\s*:\s*\{')
   } catch {}
   try { $versionResponse = Invoke-RestMethod -Uri $statusUrl -TimeoutSec 5; $version = [string]$versionResponse.version } catch {}
   $record = [ordered]@{ start=$start.ToString('o'); end=$finish.ToString('o'); latency_ms=[math]::Round(($finish-$start).TotalMilliseconds,1); status=$status; analysis_ok=[bool]$ok; version=$version }
