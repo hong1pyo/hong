@@ -85,10 +85,22 @@ jobs:
           $meta = (Invoke-WebRequest $metaUrl -UseBasicParsing).Content | ConvertFrom-Json
           Invoke-WebRequest $meta.rows[0].row.image.src -OutFile $fixedImage -UseBasicParsing
           if (-not (Test-Path $fixedImage)) { throw 'Fixed monitoring image could not be prepared.' }
-          $monitor = Start-Process powershell.exe -PassThru -WindowStyle Hidden -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$env:GITHUB_WORKSPACE\mlops\monitor.ps1",'-DurationSeconds','90','-LogPath',$monitorLog,'-TestImagePath',$fixedImage)
-          $monitor.Id | Out-File (Join-Path $logDir 'monitor.pid') -Encoding ascii
+          $monitorScript = Join-Path $env:GITHUB_WORKSPACE 'mlops\monitor.ps1'
+          $monitorStdout = Join-Path $logDir 'monitor.stdout.log'
+          $monitorStderr = Join-Path $logDir 'monitor.stderr.log'
+          # Start-Process joins ArgumentList values; quote every path because the
+          # Windows Runner workspace may contain spaces or non-ASCII characters.
+          $monitorArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$monitorScript`" -DurationSeconds 90 -LogPath `"$monitorLog`" -TestImagePath `"$fixedImage`""
+          $monitorProcess = Start-Process -FilePath 'powershell.exe' -PassThru -WindowStyle Hidden -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList $monitorArgs -RedirectStandardOutput $monitorStdout -RedirectStandardError $monitorStderr
+          $monitorPid = $monitorProcess.Id
+          $monitorPid | Out-File (Join-Path $logDir 'monitor.pid') -Encoding ascii
           Start-Sleep -Seconds 5
-          if ($monitor.HasExited) { throw 'Independent monitor exited before deployment.' }
+          if ($monitorProcess.HasExited) {
+            Write-Host 'Independent monitor exited before deployment.'
+            if (Test-Path $monitorStdout) { Get-Content $monitorStdout }
+            if (Test-Path $monitorStderr) { Get-Content $monitorStderr }
+            throw 'Independent monitor exited before deployment.'
+          }
 
           Write-Host "Pulling image: $env:IMAGE"
           docker pull $env:IMAGE
@@ -133,7 +145,7 @@ jobs:
           }
           Write-Host "Deployed $env:IMAGE successfully."
           Start-Sleep -Seconds 30
-          if (Get-Process -Id $monitor.Id -ErrorAction SilentlyContinue) { Stop-Process -Id $monitor.Id -Force }
+          if (Get-Process -Id $monitorPid -ErrorAction SilentlyContinue) { Stop-Process -Id $monitorPid -Force }
 
       - name: Publish monitoring logs and summary
         if: always()
